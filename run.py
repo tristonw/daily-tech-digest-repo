@@ -30,7 +30,7 @@ def cmd_collect(args) -> None:
 def cmd_analyze(args) -> None:
     from src.analyzer import app
     print("== 模块2：汇总分析 ==")
-    app.analyze(args.date, args.window_hours)
+    app.analyze(args.date, args.window_hours, force=args.force)
 
 
 def cmd_podcast(args) -> None:
@@ -85,6 +85,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("analyze", help="模块2：汇总分析")
     p.add_argument("--window-hours", type=int, default=None)
     p.add_argument("--date", default=None)
+    p.add_argument("--force", action="store_true", help="强制重建报告（覆盖已有）")
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("podcast", help="模块3：播客脚本/音频")

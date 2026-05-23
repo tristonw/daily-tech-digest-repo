@@ -84,11 +84,24 @@ def _template_digest(date_str: str, grouped: dict[str, list[dict]]) -> str:
     return "\n".join(out)
 
 
-def analyze(date_str: str | None = None, window_hours: int | None = None) -> Path:
+_TEMPLATE_MARK = "模板版"
+
+
+def analyze(date_str: str | None = None, window_hours: int | None = None,
+            force: bool = False) -> Path:
     cfg = config.load_config()["analyzer"]
     window_hours = window_hours or cfg.get("window_hours", 24)
     max_per_source = cfg.get("max_items_per_source", 15)
     date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    config.ensure_dirs()
+    out_path = config.REPORTS_DIR / f"{date_str}.md"
+
+    # 会话模式下若已存在真实报告（非模板版），不覆盖，避免再次运行清空已生成内容。
+    if (not force and not llm.available() and out_path.exists()
+            and _TEMPLATE_MARK not in out_path.read_text(encoding="utf-8")):
+        print(f"  已存在报告，保留不覆盖: {out_path}（如需重建用 --force）")
+        return out_path
 
     grouped = _window_items(window_hours, max_per_source)
     total = sum(len(v) for v in grouped.values())
@@ -96,8 +109,6 @@ def analyze(date_str: str | None = None, window_hours: int | None = None) -> Pat
     if total == 0:
         print("  [warn] 时间窗内无数据，请先运行 collect。")
 
-    config.ensure_dirs()
-    out_path = config.REPORTS_DIR / f"{date_str}.md"
     data_text = _items_to_text(grouped)
 
     if llm.available():
