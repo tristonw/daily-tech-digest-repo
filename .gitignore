@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.prompt.txt
+
+# 音频体积较大，默认不入库；如需保留可移除下一行。
+podcasts/*.mp3

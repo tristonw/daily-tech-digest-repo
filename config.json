@@ -1,0 +1,42 @@
+{
+  "collector": {
+    "hacker_news": {
+      "enabled": true,
+      "top_n": 30,
+      "min_score": 50
+    },
+    "github_trending": {
+      "enabled": true,
+      "since": "daily",
+      "top_n": 25
+    },
+    "rss": {
+      "enabled": true,
+      "feeds": [
+        {"name": "Hacker News Frontpage", "url": "https://hnrss.org/frontpage"},
+        {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index"},
+        {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
+        {"name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/"}
+      ],
+      "per_feed_limit": 15
+    },
+    "http_timeout": 15,
+    "watch_interval_seconds": 1800
+  },
+  "analyzer": {
+    "window_hours": 24,
+    "max_items_per_source": 15
+  },
+  "podcast": {
+    "target_minutes": 15,
+    "chars_per_minute": 280,
+    "hosts": {
+      "A": {"name": "晓宇", "role": "主持人", "voice": "zh-CN-YunxiNeural"},
+      "B": {"name": "思琪", "role": "嘉宾", "voice": "zh-CN-XiaoxiaoNeural"}
+    }
+  },
+  "llm": {
+    "model": "claude-opus-4-7",
+    "max_tokens": 8192
+  }
+}
