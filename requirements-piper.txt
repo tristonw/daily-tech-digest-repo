@@ -1,10 +1,10 @@
 # 自托管 TTS（provider=piper）所需依赖——开源、输出音频可商用，无对外发布授权风险。
-# 安装前建议先装 CPU 版 PyTorch（体积更小）：
+# 安装前建议先装 CPU 版 PyTorch（体积更小，且满足 piper-tts[zh] 的 torch 依赖）：
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 # 然后：
 #   pip install -r requirements-piper.txt
-piper-tts>=1.2.0
+#
+# piper-tts[zh] 会带齐中文链路依赖：g2pW、sentence-stream、unicode-rbnf、requests、torch。
+piper-tts[zh]>=1.2.0
 lameenc>=1.7.0
-g2pw>=0.1.0
-unicode-rbnf>=2.0.0
-sentence-stream>=1.0.0
+requests>=2.28.0
