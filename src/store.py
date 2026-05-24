@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -31,6 +31,20 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_last_seen ON items(last_seen_utc);
 CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
+
+CREATE TABLE IF NOT EXISTS collection_runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_utc   TEXT NOT NULL,
+    finished_utc  TEXT NOT NULL,
+    duration_ms   INTEGER DEFAULT 0,
+    fetched       INTEGER DEFAULT 0,
+    inserted      INTEGER DEFAULT 0,
+    updated       INTEGER DEFAULT 0,
+    per_source_json TEXT,
+    status        TEXT DEFAULT 'ok',
+    error         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runs_started ON collection_runs(started_utc);
 """
 
 
@@ -124,6 +138,78 @@ def stats(db_path: Path | None = None) -> dict:
             ).fetchall()
         }
     return {"total": total, "by_source": by_source}
+
+
+def record_run(started_utc: str, finished_utc: str, duration_ms: int,
+               fetched: int, inserted: int, updated: int,
+               per_source: dict, status: str = "ok", error: str | None = None,
+               db_path: Path | None = None) -> None:
+    """记录一次采集运行的运维指标。"""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """INSERT INTO collection_runs
+               (started_utc, finished_utc, duration_ms, fetched, inserted,
+                updated, per_source_json, status, error)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (started_utc, finished_utc, duration_ms, fetched, inserted, updated,
+             json.dumps(per_source, ensure_ascii=False), status, error),
+        )
+
+
+def recent_runs(limit: int = 20, db_path: Path | None = None) -> list[dict]:
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM collection_runs ORDER BY started_utc DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["per_source"] = json.loads(d.pop("per_source_json") or "{}")
+        except (ValueError, TypeError):
+            d["per_source"] = {}
+        out.append(d)
+    return out
+
+
+def run_stats(db_path: Path | None = None) -> dict:
+    """汇总运行指标：总次数、近24h/7d次数、最后一次运行时间。"""
+    now = datetime.now(timezone.utc)
+    d1 = (now - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    d7 = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _connect(db_path) as conn:
+        total = conn.execute("SELECT COUNT(*) c FROM collection_runs").fetchone()["c"]
+        last = conn.execute(
+            "SELECT * FROM collection_runs ORDER BY started_utc DESC LIMIT 1"
+        ).fetchone()
+        runs_24h = conn.execute(
+            "SELECT COUNT(*) c FROM collection_runs WHERE started_utc >= ?", (d1,)
+        ).fetchone()["c"]
+        runs_7d = conn.execute(
+            "SELECT COUNT(*) c FROM collection_runs WHERE started_utc >= ?", (d7,)
+        ).fetchone()["c"]
+    return {
+        "total_runs": total,
+        "runs_24h": runs_24h,
+        "runs_7d": runs_7d,
+        "last_run": dict(last) if last else None,
+    }
+
+
+def daily_new_counts(days: int = 14, db_path: Path | None = None) -> list[dict]:
+    """按日统计采集运行次数与新增条目数（用于看板趋势图）。"""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT substr(started_utc,1,10) AS day,
+                      COUNT(*) AS runs, SUM(inserted) AS new_items
+               FROM collection_runs WHERE started_utc >= ?
+               GROUP BY day ORDER BY day""",
+            (since,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def _row_to_dict(r: sqlite3.Row) -> dict:

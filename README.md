@@ -35,9 +35,21 @@ python run.py podcast --force          # 强制重建脚本（覆盖已有）
 # 一键：采集 -> 分析 -> 播客
 python run.py daily [--with-audio]
 
+# 运维看板：刷新 DASHBOARD.md（GitHub 可直接查看）并打印实时状态
+python run.py dashboard
+
+# 每日早间简报（运维状态 + 今日要点）
+python run.py brief
+
 # 数据仓库统计
 python run.py stats
 ```
+
+## 运维可见性
+
+- **`DASHBOARD.md`**（仓库根目录）：每次采集后自动刷新，含健康度（最近一次采集距今多久）、累计运行次数、各数据源清单与状态、近 14 天采集量、最近运行明细。直接在 GitHub 上打开即可看到"采集是否在后台正常运行"。
+- **`briefs/YYYY-MM-DD-brief.md`**：每日早报，含过去约 16 小时的采集运维状态 + 跨来源均衡的今日要点 + 完整报告/播客链接。由每日工作流在早上生成。
+- 每次采集都会在数据仓库 `collection_runs` 表记录一条运行日志（时间、抓取/新增/更新数、各源健康、耗时）。
 
 ## 内容生成的两种模式
 
