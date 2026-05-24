@@ -144,7 +144,11 @@ def record_run(started_utc: str, finished_utc: str, duration_ms: int,
                fetched: int, inserted: int, updated: int,
                per_source: dict, status: str = "ok", error: str | None = None,
                db_path: Path | None = None) -> None:
-    """记录一次采集运行的运维指标。"""
+    """记录一次采集运行的运维指标。
+
+    写入 DB（缓存）的同时追加到 data/runs.jsonl（git 友好的真相源，
+    DB 重建时据此恢复运行历史）。仅默认仓库写 jsonl，临时 db 不写。
+    """
     with _connect(db_path) as conn:
         conn.execute(
             """INSERT INTO collection_runs
@@ -154,6 +158,19 @@ def record_run(started_utc: str, finished_utc: str, duration_ms: int,
             (started_utc, finished_utc, duration_ms, fetched, inserted, updated,
              json.dumps(per_source, ensure_ascii=False), status, error),
         )
+    if db_path is None:
+        _append_run_jsonl({
+            "started_utc": started_utc, "finished_utc": finished_utc,
+            "duration_ms": duration_ms, "fetched": fetched, "inserted": inserted,
+            "updated": updated, "per_source": per_source,
+            "status": status, "error": error,
+        })
+
+
+def _append_run_jsonl(rec: dict) -> None:
+    config.ensure_dirs()
+    with open(config.DATA_DIR / "runs.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def recent_runs(limit: int = 20, db_path: Path | None = None) -> list[dict]:
@@ -221,11 +238,97 @@ def _row_to_dict(r: sqlite3.Row) -> dict:
     return d
 
 
-def write_jsonl_snapshot(items: list[dict], date_str: str) -> Path:
-    """把本次采集的条目追加写入 data/raw/DATE.jsonl（git 友好的可读快照）。"""
+def write_jsonl_snapshot(items: list[dict], date_str: str,
+                         collected_utc: str | None = None) -> Path:
+    """把本次采集的条目追加写入 data/raw/DATE.jsonl（git 友好的可读快照）。
+
+    每行带 collected_utc 时间戳，使 DB 可从 JSONL 忠实重建（保留 first/last_seen）。
+    """
     config.ensure_dirs()
+    collected_utc = collected_utc or _utcnow()
     path = config.RAW_DIR / f"{date_str}.jsonl"
     with open(path, "a", encoding="utf-8") as fh:
         for it in items:
-            fh.write(json.dumps(it, ensure_ascii=False) + "\n")
+            rec = dict(it)
+            rec["collected_utc"] = collected_utc
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return path
+
+
+def ensure_db(db_path: Path | None = None) -> None:
+    """DB 是派生缓存（不入库）。若不存在（如全新 clone），从 JSONL 重建。"""
+    p = Path(db_path or config.DB_PATH)
+    if not p.exists():
+        rebuild(p)
+
+
+def rebuild(db_path: Path | None = None) -> Path:
+    """从 data/raw/*.jsonl 与 data/runs.jsonl 重建 DB 缓存。"""
+    p = Path(db_path or config.DB_PATH)
+    if p.exists():
+        p.unlink()
+    config.ensure_dirs()
+    with _connect(p) as conn:
+        for f in sorted(config.RAW_DIR.glob("*.jsonl")):
+            fallback_ts = f.stem[:10] + "T00:00:00Z"
+            with open(f, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        it = json.loads(line)
+                    except ValueError:
+                        continue
+                    _rebuild_upsert(conn, it, it.get("collected_utc") or fallback_ts)
+        runs_file = config.DATA_DIR / "runs.jsonl"
+        if runs_file.exists():
+            with open(runs_file, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        continue
+                    conn.execute(
+                        """INSERT INTO collection_runs
+                           (started_utc, finished_utc, duration_ms, fetched,
+                            inserted, updated, per_source_json, status, error)
+                           VALUES (?,?,?,?,?,?,?,?,?)""",
+                        (r.get("started_utc"), r.get("finished_utc"),
+                         r.get("duration_ms", 0), r.get("fetched", 0),
+                         r.get("inserted", 0), r.get("updated", 0),
+                         json.dumps(r.get("per_source", {}), ensure_ascii=False),
+                         r.get("status", "ok"), r.get("error")),
+                    )
+    return p
+
+
+def _rebuild_upsert(conn: sqlite3.Connection, it: dict, ts: str) -> None:
+    """按时间顺序回放 JSONL 条目：首见设 first_seen，复现更新 last_seen/score。"""
+    source = it["source"]
+    external_id = str(it["external_id"])
+    meta_json = json.dumps(it.get("meta", {}), ensure_ascii=False)
+    row = conn.execute(
+        "SELECT id, score FROM items WHERE source=? AND external_id=?",
+        (source, external_id),
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            """INSERT INTO items
+               (source, external_id, title, url, summary, score, lang,
+                meta_json, first_seen_utc, last_seen_utc)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (source, external_id, it.get("title", ""), it.get("url"),
+             it.get("summary"), int(it.get("score") or 0), it.get("lang"),
+             meta_json, ts, ts),
+        )
+    else:
+        conn.execute(
+            """UPDATE items SET score=?, summary=COALESCE(?, summary),
+               meta_json=?, last_seen_utc=? WHERE id=?""",
+            (max(int(it.get("score") or 0), int(row["score"] or 0)),
+             it.get("summary"), meta_json, ts, row["id"]),
+        )
