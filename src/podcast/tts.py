@@ -44,24 +44,31 @@ def _parse_script(text: str, hosts: dict) -> list[tuple[str, str]]:
     return segments
 
 
-def _ssl_patch(insecure: bool) -> None:
-    """让 edge-tts 的 aiohttp 使用环境 CA（或非校验），以适配 MITM 代理。"""
+def _patch_edge_tts_ssl(insecure: bool) -> None:
+    """让 edge-tts 信任本环境的 CA。
+
+    edge-tts 在 communicate/voices 模块用 certifi 构建了模块级 _SSL_CTX，
+    不信任企业代理/MITM 的根证书。这里改用系统 CA 包（含代理根证书）覆盖之，
+    使其在代理环境下也能握手成功。
+    """
     import os
-    ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-    _orig = ssl.create_default_context
-
-    def factory(*a, **k):
-        if insecure:
-            ctx = ssl.create_default_context(*a, **k)
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            return ctx
-        if ca and "cafile" not in k:
-            k["cafile"] = ca
-        return _orig(*a, **k)
-
-    ssl.create_default_context = factory  # type: ignore[assignment]
-    ssl._create_default_https_context = factory  # type: ignore[attr-defined]
+    import edge_tts.communicate as _c
+    ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE") \
+        or "/etc/ssl/certs/ca-certificates.crt"
+    if insecure:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    elif os.path.exists(ca):
+        ctx = ssl.create_default_context(cafile=ca)
+    else:
+        return  # 用 edge-tts 默认（certifi）
+    _c._SSL_CTX = ctx
+    try:
+        import edge_tts.voices as _v
+        _v._SSL_CTX = ctx
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def _synth(segments: list[tuple[str, str]], out_path: Path) -> None:
@@ -89,12 +96,12 @@ def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
     print(f"  解析到 {len(segments)} 段台词，开始合成…")
 
     out_path = config.PODCASTS_DIR / f"{date_str}.mp3"
-    _ssl_patch(insecure_ssl)
+    _patch_edge_tts_ssl(insecure_ssl)
     try:
         asyncio.run(_synth(segments, out_path))
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
-            "音频合成失败（TTS 端点可能被网络策略/代理拦截）。"
+            "音频合成失败（TTS 端点不可达或证书校验失败）。"
             "脚本已保留，可在 TTS 端点可达的环境重试，或加 --insecure-ssl。"
             f"\n原始错误：{exc}"
         ) from exc
