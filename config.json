@@ -38,5 +38,16 @@
   "llm": {
     "model": "claude-opus-4-7",
     "max_tokens": 8192
+  },
+  "publish": {
+    "site_base_url": "https://tristonw.github.io/daily-tech-digest-repo",
+    "title": "每日科技播客",
+    "author": "Daily Tech Digest",
+    "email": "you@example.com",
+    "description": "每天自动汇总 GitHub、Hacker News 与科技媒体的动态，生成双人对话播客。本节目的文稿与配音均由 AI 自动生成。",
+    "category": "Technology",
+    "language": "zh-cn",
+    "explicit": false,
+    "image": ""
   }
 }
