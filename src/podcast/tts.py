@@ -246,10 +246,11 @@ def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
     except (RuntimeError, ValueError):
         raise
     except Exception as exc:  # noqa: BLE001
+        hint = ("（edge 端点不可达/证书问题可加 --insecure-ssl）"
+                if provider == "edge" else
+                "（piper 多为依赖未装或模型下载失败；azure 多为 key/区域问题）")
         raise RuntimeError(
-            "音频合成失败（TTS 端点不可达或证书校验失败）。"
-            "脚本已保留，可在 TTS 端点可达的环境重试，或加 --insecure-ssl。"
-            f"\n原始错误：{exc}"
+            f"音频合成失败（provider={provider}）：{type(exc).__name__}: {exc} {hint}"
         ) from exc
     size_kb = out_path.stat().st_size // 1024
     print(f"  ✓ 音频已生成: {out_path}（{size_kb} KB）")

@@ -67,8 +67,17 @@ def synth_all(insecure_ssl: bool = False) -> dict:
             done.append(ep["date"])
         except Exception as exc:  # noqa: BLE001
             failed.append(ep["date"])
-            print(f"  [warn] {ep['date']} 音频合成失败: {exc}")
+            # 打印完整根因（含被包装的底层异常），便于在 CI 日志定位。
+            cause = getattr(exc, "__cause__", None)
+            print(f"  [error] {ep['date']} 音频合成失败: {type(exc).__name__}: {exc}")
+            if cause is not None:
+                print(f"          根因: {type(cause).__name__}: {cause}")
     return {"done": done, "failed": failed}
+
+
+def missing_audio_episodes() -> list[str]:
+    """有真实剧本却没有对应 mp3 的期（应当合成却没合成）。"""
+    return [ep["date"] for ep in _episodes() if not _has_audio(ep["mp3"])]
 
 
 _HEAD = """<!DOCTYPE html>
