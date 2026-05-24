@@ -96,6 +96,7 @@ _HEAD = """<!DOCTYPE html>
 </head>
 <body>
 <header>
+  <img src="cover.png" alt="封面" style="width:160px;height:160px;border-radius:16px;margin-bottom:12px">
   <h1>🎙 每日科技播客</h1>
   <p>每天自动汇总科技动态，生成双人对话播客</p>
   <p><a href="feed.xml">📡 RSS 订阅</a>（可提交小宇宙 / Apple Podcasts 收录）</p>
@@ -115,6 +116,13 @@ def build_site(out_dir: Path | None = None) -> Path:
     out = out_dir or (config.ROOT / "site")
     audio_dir = out / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
+
+    # 生成封面图（小宇宙/Apple 收录的硬性条件）
+    try:
+        from . import cover
+        cover.generate(out / "cover.png")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [warn] 封面生成失败（需要 Pillow）: {exc}")
 
     cards = []
     for ep in _episodes():
@@ -169,12 +177,12 @@ def build_feed(out_dir: Path | None = None) -> Path:
       <itunes:explicit>{'yes' if p.get('explicit') else 'no'}</itunes:explicit>
     </item>""")
 
-    image_tag = (f'<itunes:image href="{xml_escape(p["image"])}"/>'
-                 if p.get("image") else "")
-    channel_image = (f'<image><url>{xml_escape(p["image"])}</url>'
+    # 未显式配置封面时，默认用自动生成的 cover.png
+    image_url = p.get("image") or f"{base}/cover.png"
+    image_tag = f'<itunes:image href="{xml_escape(image_url)}"/>'
+    channel_image = (f'<image><url>{xml_escape(image_url)}</url>'
                      f'<title>{xml_escape(p.get("title",""))}</title>'
-                     f'<link>{xml_escape(base)}</link></image>'
-                     if p.get("image") else "")
+                     f'<link>{xml_escape(base)}</link></image>')
     feed = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
