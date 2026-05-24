@@ -95,6 +95,12 @@ def cmd_publish(args) -> None:
     print(f"  站点已生成: {out}")
 
 
+def cmd_archive(_args) -> None:
+    from src import archive
+    r = archive.archive_old()
+    print(f"归档完成：压缩 {r['archived']} 个日文件，删除 {r['deleted']} 个超期月归档")
+
+
 def cmd_rebuild(_args) -> None:
     from src import store
     store.rebuild()
@@ -152,6 +158,9 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("rebuild", help="从 data/*.jsonl 重建数据仓库缓存")
     p.set_defaults(func=cmd_rebuild)
+
+    p = sub.add_parser("archive", help="归档旧采集数据（压缩/清理，控制仓库体积）")
+    p.set_defaults(func=cmd_archive)
 
     p = sub.add_parser("publish", help="合成音频并构建 GitHub Pages 播放页")
     p.add_argument("--skip-audio", action="store_true", help="只构建站点，不合成音频")

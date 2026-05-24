@@ -215,6 +215,38 @@ class TestShowNotes(unittest.TestCase):
                 config.REPORTS_DIR, config.PODCASTS_DIR = orig_r, orig_p
 
 
+class TestArchive(unittest.TestCase):
+    def test_archive_and_rebuild_preserves_history(self):
+        import json as _json
+        from datetime import datetime, timedelta, timezone
+        from pathlib import Path
+        from src import archive, config, store
+        d = Path(tempfile.mkdtemp())
+        orig = (config.DATA_DIR, config.RAW_DIR, config.DB_PATH)
+        config.DATA_DIR, config.RAW_DIR = d, d / "raw"
+        config.RAW_DIR.mkdir(parents=True)
+        config.DB_PATH = d / "digest.db"
+        try:
+            today = datetime.now(timezone.utc).date()
+            def mk(day):
+                with open(config.RAW_DIR / f"{day}.jsonl", "w", encoding="utf-8") as f:
+                    f.write(_json.dumps({"source": "hn", "external_id": f"{day}-x",
+                                         "title": "t", "score": 1,
+                                         "collected_utc": f"{day}T00:00:00Z"}) + "\n")
+            recent = today.isoformat()
+            old = (today - timedelta(days=60)).isoformat()
+            mk(recent); mk(old)
+            r = archive.archive_old(active_days=30, max_age_days=365)
+            self.assertEqual(r["archived"], 1)  # 旧文件被归档
+            self.assertFalse((config.RAW_DIR / f"{old}.jsonl").exists())
+            self.assertTrue(list((d / "archive").glob("*.jsonl.gz")))
+            # 重建后两条历史都在（归档 + 明文）
+            store.rebuild(config.DB_PATH)
+            self.assertEqual(store.stats(config.DB_PATH)["total"], 2)
+        finally:
+            config.DATA_DIR, config.RAW_DIR, config.DB_PATH = orig
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)

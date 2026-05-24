@@ -268,7 +268,21 @@ def rebuild(db_path: Path | None = None) -> Path:
     if p.exists():
         p.unlink()
     config.ensure_dirs()
+    import gzip
     with _connect(p) as conn:
+        # 先回放压缩归档（更早），再回放明文 raw（更近），保证时间顺序。
+        arch_dir = config.DATA_DIR / "archive"
+        for gz in sorted(arch_dir.glob("*.jsonl.gz")) if arch_dir.exists() else []:
+            with gzip.open(gz, "rt", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        it = json.loads(line)
+                    except ValueError:
+                        continue
+                    _rebuild_upsert(conn, it, it.get("collected_utc") or gz.stem[:7] + "-01T00:00:00Z")
         for f in sorted(config.RAW_DIR.glob("*.jsonl")):
             fallback_ts = f.stem[:10] + "T00:00:00Z"
             with open(f, "r", encoding="utf-8") as fh:

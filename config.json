@@ -27,6 +27,10 @@
     "window_hours": 24,
     "max_items_per_source": 15
   },
+  "archive": {
+    "active_days": 30,
+    "max_age_days": 365
+  },
   "podcast": {
     "target_minutes": 15,
     "chars_per_minute": 280,

@@ -95,6 +95,14 @@ https://<用户名>.github.io/daily-tech-digest-repo/
 - 手动重建：`python run.py rebuild`。
 - 这样多个工作流/分支并发提交也不会产生二进制合并冲突。
 
+### 归档策略（控制仓库体积，不丢历史）
+
+`config.json → archive` 配置，`daily.yml` 每日自动执行 `python run.py archive`：
+- **近 30 天**（`active_days`）：`data/raw/*.jsonl` 保持明文。
+- **超过 30 天**：日文件按月压缩进 `data/archive/YYYY-MM.jsonl.gz`，删除原明文。
+- **超过 365 天**（`max_age_days`）：整月归档删除；`runs.jsonl` 同步修剪。
+- DB 重建（`rebuild`）会同时读取 `raw` 与 `archive`，保留期内历史可完整还原。
+
 ## 内容生成的两种模式
 
 `analyze` 与 `podcast` 的内容生成（LLM 部分）支持两种驱动方式，自动切换：
