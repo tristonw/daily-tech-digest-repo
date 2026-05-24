@@ -52,6 +52,30 @@ def _balanced_top(rows: list[dict], per_source: int = 3) -> list[dict]:
     return out
 
 
+def _podcast_teaser(date_str: str, items: list[dict]) -> str:
+    """今日播客一句话导读：LLM 可用时生成，否则从脚本中提取嘉宾的看点句。"""
+    script_path = config.PODCASTS_DIR / f"{date_str}-script.md"
+    if not script_path.exists():
+        return ""
+    text = script_path.read_text(encoding="utf-8")
+    if "（待生成）" in text:  # 占位脚本，无可用内容
+        return ""
+    if llm.available():
+        try:
+            sys = "用一句不超过40字的中文，为这期科技播客写一句吸引人的导读。只输出这句话。"
+            dialogue = "\n".join(l for l in text.splitlines()
+                                 if l.startswith(("主持人A：", "嘉宾B：")))
+            return llm.complete(sys, dialogue[:1500], max_tokens=120).strip()
+        except Exception:  # noqa: BLE001
+            pass
+    # 回退：取嘉宾B第一句带"看点/剧透"的台词，否则取其首句
+    b_lines = [l.split("：", 1)[1] for l in text.splitlines() if l.startswith("嘉宾B：")]
+    for ln in b_lines:
+        if "看点" in ln:
+            return ln[ln.find("看点") + 2:].lstrip("：:，, ").strip() or ln.strip()
+    return b_lines[0].strip() if b_lines else ""
+
+
 def generate(date_str: str | None = None, window_hours: int = 24) -> Path:
     date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     since = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).strftime(
@@ -100,11 +124,17 @@ def generate(date_str: str | None = None, window_hours: int = 24) -> Path:
     if narrative:
         md += [f"> {narrative}", ""]
     md += top_lines if top_lines else ["（时间窗内暂无数据，请检查采集是否正常）"]
+
+    teaser = _podcast_teaser(date_str, items)
+    md += ["", "## 🎙 今日播客"]
+    if teaser:
+        md.append(f"> {teaser}")
+    md.append(f"- 脚本：`podcasts/{date_str}-script.md`")
+
     md += [
         "",
         "## 🔗 延伸",
         f"- 完整汇总：`reports/{date_str}.md`",
-        f"- 今日播客：`podcasts/{date_str}-script.md`",
         "- 运维看板：`DASHBOARD.md`",
         "",
         "---",
