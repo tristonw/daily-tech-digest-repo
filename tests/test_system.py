@@ -188,6 +188,33 @@ class TestContentFilter(unittest.TestCase):
         self.assertEqual(len(filters.filter_items(items, None)), 1)
 
 
+class TestShowNotes(unittest.TestCase):
+    def test_outline_and_links_extraction(self):
+        import tempfile
+        from src import config, notes
+        with tempfile.TemporaryDirectory() as d:
+            from pathlib import Path
+            rep = Path(d) / "reports"
+            pod = Path(d) / "podcasts"
+            rep.mkdir(); pod.mkdir()
+            orig_r, orig_p = config.REPORTS_DIR, config.PODCASTS_DIR
+            config.REPORTS_DIR, config.PODCASTS_DIR = rep, pod
+            try:
+                (rep / "2026-01-01.md").write_text(
+                    "# 报告\n[A 项目](https://github.com/x/a) 和 "
+                    "[B 新闻](https://ex.com/b)\n再次 [A 项目](https://github.com/x/a)\n",
+                    encoding="utf-8")
+                (pod / "2026-01-01-script.md").write_text(
+                    "# 标题\n<!-- outline:\n- 开场\n- 话题一\n- 收尾\n-->\n"
+                    "主持人A：你好。\n", encoding="utf-8")
+                n = notes.build_notes("2026-01-01")
+                self.assertEqual(n["outline"], ["开场", "话题一", "收尾"])
+                self.assertEqual(len(n["links"]), 2)  # 去重后 2 条
+                self.assertIn("github.com/x/a", n["html"])
+            finally:
+                config.REPORTS_DIR, config.PODCASTS_DIR = orig_r, orig_p
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)
