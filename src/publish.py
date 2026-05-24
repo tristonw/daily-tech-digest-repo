@@ -14,6 +14,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
 from . import brief, config
+from . import notes as _notes
 from .podcast import tts
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})-script\.md$")
@@ -132,11 +133,24 @@ def build_site(out_dir: Path | None = None) -> Path:
                       f'src="audio/{ep["date"]}.mp3"></audio>')
         else:
             player = '<p class="noaudio">（音频生成中，稍后刷新）</p>'
+        notes = _notes.build_notes(ep["date"])
+        outline_html = ""
+        if notes["outline"]:
+            outline_html = ("<details><summary>本期大纲</summary><ul>"
+                            + "".join(f"<li>{html.escape(o)}</li>" for o in notes["outline"])
+                            + "</ul></details>")
+        links_html = ""
+        if notes["links"]:
+            links_html = ("<details><summary>关键新闻链接</summary><ul>"
+                          + "".join(f'<li><a href="{html.escape(u)}" target="_blank" rel="noopener">{html.escape(t)}</a></li>'
+                                    for t, u in notes["links"])
+                          + "</ul></details>")
         cards.append(
             f'<article class="ep">\n'
             f'  <h2>每日科技播客 · {ep["date"]}</h2>\n'
             f'  <p class="teaser">{html.escape(ep["teaser"] or "")}</p>\n'
             f'  {player}\n'
+            f'  {outline_html}{links_html}\n'
             f'</article>'
         )
 
@@ -165,11 +179,15 @@ def build_feed(out_dir: Path | None = None) -> Path:
         pub = format_datetime(datetime(int(date[:4]), int(date[5:7]),
                                        int(date[8:10]), 12, tzinfo=timezone.utc))
         title = f"{p.get('title','每日科技播客')} · {date}"
-        desc = ep["teaser"] or "每日科技动态汇总"
+        notes = _notes.build_notes(date)
+        teaser = ep["teaser"] or "每日科技动态汇总"
+        desc = (teaser + "\n\n" + notes["text"]) if notes["text"] else teaser
+        content_html = (f"<p>{xml_escape(teaser)}</p>" + notes["html"]) if notes["html"] else f"<p>{xml_escape(teaser)}</p>"
         items_xml.append(f"""    <item>
       <title>{xml_escape(title)}</title>
       <description>{xml_escape(desc)}</description>
       <itunes:summary>{xml_escape(desc)}</itunes:summary>
+      <content:encoded><![CDATA[{content_html}]]></content:encoded>
       <enclosure url="{xml_escape(audio_url)}" length="{size}" type="audio/mpeg"/>
       <guid isPermaLink="false">{xml_escape(audio_url)}</guid>
       <pubDate>{pub}</pubDate>

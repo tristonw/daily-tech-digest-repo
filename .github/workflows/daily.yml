@@ -46,6 +46,9 @@ jobs:
         run: python run.py podcast
         # 音频合成与发布由 pages.yml 负责（self-hosted Piper + GitHub Pages），此处只产文稿。
 
+      - name: Archive old data
+        run: python run.py archive
+
       - name: Commit report and script
         run: |
           git config user.name "github-actions[bot]"

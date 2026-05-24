@@ -188,6 +188,65 @@ class TestContentFilter(unittest.TestCase):
         self.assertEqual(len(filters.filter_items(items, None)), 1)
 
 
+class TestShowNotes(unittest.TestCase):
+    def test_outline_and_links_extraction(self):
+        import tempfile
+        from src import config, notes
+        with tempfile.TemporaryDirectory() as d:
+            from pathlib import Path
+            rep = Path(d) / "reports"
+            pod = Path(d) / "podcasts"
+            rep.mkdir(); pod.mkdir()
+            orig_r, orig_p = config.REPORTS_DIR, config.PODCASTS_DIR
+            config.REPORTS_DIR, config.PODCASTS_DIR = rep, pod
+            try:
+                (rep / "2026-01-01.md").write_text(
+                    "# 报告\n[A 项目](https://github.com/x/a) 和 "
+                    "[B 新闻](https://ex.com/b)\n再次 [A 项目](https://github.com/x/a)\n",
+                    encoding="utf-8")
+                (pod / "2026-01-01-script.md").write_text(
+                    "# 标题\n<!-- outline:\n- 开场\n- 话题一\n- 收尾\n-->\n"
+                    "主持人A：你好。\n", encoding="utf-8")
+                n = notes.build_notes("2026-01-01")
+                self.assertEqual(n["outline"], ["开场", "话题一", "收尾"])
+                self.assertEqual(len(n["links"]), 2)  # 去重后 2 条
+                self.assertIn("github.com/x/a", n["html"])
+            finally:
+                config.REPORTS_DIR, config.PODCASTS_DIR = orig_r, orig_p
+
+
+class TestArchive(unittest.TestCase):
+    def test_archive_and_rebuild_preserves_history(self):
+        import json as _json
+        from datetime import datetime, timedelta, timezone
+        from pathlib import Path
+        from src import archive, config, store
+        d = Path(tempfile.mkdtemp())
+        orig = (config.DATA_DIR, config.RAW_DIR, config.DB_PATH)
+        config.DATA_DIR, config.RAW_DIR = d, d / "raw"
+        config.RAW_DIR.mkdir(parents=True)
+        config.DB_PATH = d / "digest.db"
+        try:
+            today = datetime.now(timezone.utc).date()
+            def mk(day):
+                with open(config.RAW_DIR / f"{day}.jsonl", "w", encoding="utf-8") as f:
+                    f.write(_json.dumps({"source": "hn", "external_id": f"{day}-x",
+                                         "title": "t", "score": 1,
+                                         "collected_utc": f"{day}T00:00:00Z"}) + "\n")
+            recent = today.isoformat()
+            old = (today - timedelta(days=60)).isoformat()
+            mk(recent); mk(old)
+            r = archive.archive_old(active_days=30, max_age_days=365)
+            self.assertEqual(r["archived"], 1)  # 旧文件被归档
+            self.assertFalse((config.RAW_DIR / f"{old}.jsonl").exists())
+            self.assertTrue(list((d / "archive").glob("*.jsonl.gz")))
+            # 重建后两条历史都在（归档 + 明文）
+            store.rebuild(config.DB_PATH)
+            self.assertEqual(store.stats(config.DB_PATH)["total"], 2)
+        finally:
+            config.DATA_DIR, config.RAW_DIR, config.DB_PATH = orig
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)
