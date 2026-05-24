@@ -165,6 +165,29 @@ class TestRebuildUpsert(unittest.TestCase):
         self.assertEqual(row["score"], 99)                                # 取最大热度
 
 
+class TestContentFilter(unittest.TestCase):
+    def test_blocks_political_keywords(self):
+        from src import filters
+        cfg = {"enabled": True, "block_keywords": ["trump", "选举"]}
+        items = [
+            {"title": "Trump announces new policy", "summary": ""},
+            {"title": "New AI coding agent released", "summary": ""},
+            {"title": "某地选举结果", "summary": ""},
+            {"title": "GitHub trending tool", "summary": "great for devs"},
+        ]
+        kept = filters.filter_items(items, cfg)
+        titles = [it["title"] for it in kept]
+        self.assertEqual(len(kept), 2)
+        self.assertIn("New AI coding agent released", titles)
+        self.assertNotIn("Trump announces new policy", titles)
+
+    def test_disabled_passthrough(self):
+        from src import filters
+        items = [{"title": "Trump", "summary": ""}]
+        self.assertEqual(len(filters.filter_items(items, {"enabled": False})), 1)
+        self.assertEqual(len(filters.filter_items(items, None)), 1)
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)

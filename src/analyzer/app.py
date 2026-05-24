@@ -8,13 +8,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .. import config, llm, store
+from .. import config, filters, llm, store
 
 
 def _window_items(window_hours: int, max_per_source: int) -> dict[str, list[dict]]:
     since = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
     rows = store.query_window(since)
+    rows = filters.filter_items(rows, config.load_config().get("content_filter"))
     grouped: dict[str, list[dict]] = {}
     for r in rows:
         grouped.setdefault(r["source"], [])

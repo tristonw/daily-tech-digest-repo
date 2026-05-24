@@ -33,7 +33,24 @@
     "hosts": {
       "A": {"name": "晓宇", "role": "主持人", "voice": "zh-CN-YunxiNeural"},
       "B": {"name": "思琪", "role": "嘉宾", "voice": "zh-CN-XiaoxiaoNeural"}
+    },
+    "tts": {
+      "provider": "edge",
+      "ai_disclaimer": "本期节目的文稿与配音均由人工智能自动生成，内容仅供参考。",
+      "azure": {"region": "eastus", "output_format": "audio-24khz-48kbitrate-mono-mp3"}
     }
+  },
+  "content_filter": {
+    "enabled": true,
+    "block_keywords": [
+      "trump", "biden", "election", "president", "senate", "congress",
+      "white house", "immigration", "green card", "visa", "deport",
+      "abortion", "gun", "shooting", "weapon", "missile", "war ", "military",
+      "troop", "nato", "protest", "riot", "arrested", "sanction", "tariff",
+      "espionage", "surveillance", "fbi", "cia", "nsa", "terror", "lawsuit",
+      "政治", "选举", "总统", "战争", "军事", "武器", "抗议", "逮捕",
+      "枪击", "移民", "制裁", "监控", "警方", "法院", "敏感"
+    ]
   },
   "llm": {
     "model": "claude-opus-4-7",

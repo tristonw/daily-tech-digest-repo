@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import config, llm, store
+from . import config, filters, llm, store
 
 _LABELS = {"github": "GitHub", "hackernews": "Hacker News", "rss": "RSS"}
 
@@ -80,7 +80,9 @@ def generate(date_str: str | None = None, window_hours: int = 24) -> Path:
     date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     since = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
-    items = _balanced_top(store.query_window(since), per_source=3)
+    rows = filters.filter_items(
+        store.query_window(since), config.load_config().get("content_filter"))
+    items = _balanced_top(rows, per_source=3)
     ops = _overnight_ops()
 
     config.ensure_dirs()

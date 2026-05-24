@@ -107,6 +107,15 @@ reports/               # 汇总 digest
 podcasts/              # 双人对话脚本 + MP3
 ```
 
+## 合规与风险控制
+
+- **内容过滤**：`config.json → content_filter` 按关键词剔除时政/敏感条目（仅作用于 digest / 早报 / 播客等对外产物，原始采集数据完整保留）。可按需增删 `block_keywords`。
+- **AI 生成标识**：RSS feed、播放页均标注"由 AI 生成"；音频开头自动插入一段 AI 声明（`config.podcast.tts.ai_disclaimer`）。符合《互联网信息服务深度合成管理规定》对合成内容标识的要求。
+- **TTS provider 可切换**（`config.podcast.tts.provider`）：
+  - `edge`（默认，免费）：⚠ **仅授权用于微软 Edge"大声朗读"，未授权用于对外发布/商业播客**。
+  - `azure`：Azure 语音服务 REST（付费订阅含商用授权），密钥用环境变量 `AZURE_SPEECH_KEY`，区域在 `config.podcast.tts.azure.region`。**对外发布请改用此项或其它有商用授权的 TTS。**
+- **版权**：仅做摘要、评论与链接回源，不复制原文；公开发布前请确认来源条款并咨询专业意见。
+
 ## 说明
 
 - 采集与分析全部使用 Python 标准库，外部依赖仅 `edge-tts`（音频合成）。
