@@ -84,6 +84,13 @@ def cmd_brief(args) -> None:
     print(f"早报已生成: {brief.generate(args.date)}")
 
 
+def cmd_rebuild(_args) -> None:
+    from src import store
+    store.rebuild()
+    s = store.stats()
+    print(f"已从 JSONL 重建数据仓库：{s['total']} 条 -> {s['by_source']}")
+
+
 def cmd_stats(_args) -> None:
     from src import store
     s = store.stats()
@@ -132,7 +139,13 @@ def main(argv=None) -> int:
     p.add_argument("--date", default=None)
     p.set_defaults(func=cmd_brief)
 
+    p = sub.add_parser("rebuild", help="从 data/*.jsonl 重建数据仓库缓存")
+    p.set_defaults(func=cmd_rebuild)
+
     args = parser.parse_args(argv)
+    # DB 是派生缓存（不入库）；全新 clone 后从 data/*.jsonl 自动重建。
+    from src import store
+    store.ensure_db()
     args.func(args)
     return 0
 

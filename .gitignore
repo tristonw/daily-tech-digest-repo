@@ -4,5 +4,8 @@ __pycache__/
 venv/
 *.prompt.txt
 
+# 数据仓库 DB 是派生缓存，从 data/*.jsonl 重建，不入库（避免二进制合并冲突）。
+data/digest.db
+
 # 音频体积较大，默认不入库；如需保留可移除下一行。
 podcasts/*.mp3

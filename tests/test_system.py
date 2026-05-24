@@ -143,6 +143,28 @@ class TestBriefBalance(unittest.TestCase):
         self.assertEqual(len(top), 6)  # 每源 2 条
 
 
+class TestRebuildUpsert(unittest.TestCase):
+    def setUp(self):
+        fd, self.db = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.dbp = Path(self.db)
+
+    def tearDown(self):
+        self.dbp.unlink(missing_ok=True)
+
+    def test_chronological_replay(self):
+        item = {"source": "hn", "external_id": "x", "title": "t",
+                "url": "u", "summary": "s", "score": 10, "meta": {}}
+        with store._connect(self.dbp) as conn:
+            store._rebuild_upsert(conn, item, "2026-05-01T00:00:00Z")
+            item2 = dict(item, score=99)
+            store._rebuild_upsert(conn, item2, "2026-05-03T00:00:00Z")
+            row = conn.execute("SELECT * FROM items").fetchone()
+        self.assertEqual(row["first_seen_utc"], "2026-05-01T00:00:00Z")  # 保留首见
+        self.assertEqual(row["last_seen_utc"], "2026-05-03T00:00:00Z")   # 更新末见
+        self.assertEqual(row["score"], 99)                                # 取最大热度
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)

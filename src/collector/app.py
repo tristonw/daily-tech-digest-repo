@@ -41,10 +41,11 @@ def collect_once(verbose: bool = True) -> dict:
         _run_source("rss", "RSS", lambda: sources.fetch_rss(
             rss_cfg.get("feeds", []), rss_cfg.get("per_feed_limit", 15), timeout))
 
+    started_iso = started.strftime("%Y-%m-%dT%H:%M:%SZ")
     result = store.upsert_many(collected)
     date_str = started.strftime("%Y-%m-%d")
     if collected:
-        store.write_jsonl_snapshot(collected, date_str)
+        store.write_jsonl_snapshot(collected, date_str, collected_utc=started_iso)
     result["fetched"] = len(collected)
 
     finished = datetime.now(timezone.utc)
