@@ -84,6 +84,17 @@ def cmd_brief(args) -> None:
     print(f"早报已生成: {brief.generate(args.date)}")
 
 
+def cmd_publish(args) -> None:
+    from src import publish
+    if not args.skip_audio:
+        print("== 合成音频 ==")
+        r = publish.synth_all(insecure_ssl=args.insecure_ssl)
+        print(f"  音频就绪: {len(r['done'])} 期，失败/跳过: {len(r['failed'])} 期")
+    print("== 构建播放页 ==")
+    out = publish.build_site()
+    print(f"  站点已生成: {out}")
+
+
 def cmd_rebuild(_args) -> None:
     from src import store
     store.rebuild()
@@ -141,6 +152,11 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("rebuild", help="从 data/*.jsonl 重建数据仓库缓存")
     p.set_defaults(func=cmd_rebuild)
+
+    p = sub.add_parser("publish", help="合成音频并构建 GitHub Pages 播放页")
+    p.add_argument("--skip-audio", action="store_true", help="只构建站点，不合成音频")
+    p.add_argument("--insecure-ssl", action="store_true", help="TTS 跳过证书校验")
+    p.set_defaults(func=cmd_publish)
 
     args = parser.parse_args(argv)
     # DB 是派生缓存（不入库）；全新 clone 后从 data/*.jsonl 自动重建。
