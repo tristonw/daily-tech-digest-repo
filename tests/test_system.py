@@ -247,6 +247,27 @@ class TestArchive(unittest.TestCase):
             config.DATA_DIR, config.RAW_DIR, config.DB_PATH = orig
 
 
+class TestPublishRequiresAudio(unittest.TestCase):
+    def test_missing_audio_detected(self):
+        from pathlib import Path
+        from src import config, publish
+        d = Path(tempfile.mkdtemp())
+        orig = config.PODCASTS_DIR
+        config.PODCASTS_DIR = d
+        try:
+            # 一个真实剧本（非占位）但没有 mp3
+            (d / "2026-02-02-script.md").write_text(
+                "# t\n主持人A：你好。\n嘉宾B：你好。\n", encoding="utf-8")
+            missing = publish.missing_audio_episodes()
+            self.assertIn("2026-02-02", missing)
+            # 占位剧本不应被计入
+            (d / "2026-02-03-script.md").write_text(
+                "主持人A：（待生成）占位。\n", encoding="utf-8")
+            self.assertNotIn("2026-02-03", publish.missing_audio_episodes())
+        finally:
+            config.PODCASTS_DIR = orig
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)

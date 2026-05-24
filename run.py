@@ -85,6 +85,7 @@ def cmd_brief(args) -> None:
 
 
 def cmd_publish(args) -> None:
+    import sys
     from src import publish
     if not args.skip_audio:
         print("== 合成音频 ==")
@@ -93,6 +94,13 @@ def cmd_publish(args) -> None:
     print("== 构建播放页 ==")
     out = publish.build_site()
     print(f"  站点已生成: {out}")
+    # 关键：若有真实剧本却缺音频，发布视为失败（让 CI 变红、暴露问题），
+    # 而不是静默部署一个没有声音的站点/feed。
+    missing = publish.missing_audio_episodes()
+    if missing and not args.allow_missing_audio:
+        print(f"  [error] 以下期缺少音频，发布失败: {', '.join(missing)}")
+        print("          （排查上面的合成错误；本地仅构建可加 --allow-missing-audio）")
+        sys.exit(1)
 
 
 def cmd_archive(_args) -> None:
@@ -164,6 +172,8 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("publish", help="合成音频并构建 GitHub Pages 播放页")
     p.add_argument("--skip-audio", action="store_true", help="只构建站点，不合成音频")
+    p.add_argument("--allow-missing-audio", action="store_true",
+                   help="容忍缺音频（仅本地构站点用）；CI 不应加此项")
     p.add_argument("--insecure-ssl", action="store_true", help="TTS 跳过证书校验")
     p.set_defaults(func=cmd_publish)
 
