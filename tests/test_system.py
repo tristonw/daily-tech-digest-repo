@@ -100,6 +100,49 @@ class TestStore(unittest.TestCase):
         self.assertEqual(rows, [])
 
 
+class TestRunMetrics(unittest.TestCase):
+    def setUp(self):
+        fd, self.db = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.dbp = Path(self.db)
+
+    def tearDown(self):
+        self.dbp.unlink(missing_ok=True)
+
+    def test_record_and_run_stats(self):
+        store.record_run("2026-05-24T00:00:00Z", "2026-05-24T00:00:05Z", 5000,
+                         fetched=60, inserted=10, updated=50,
+                         per_source={"github": {"fetched": 16, "status": "ok"}},
+                         db_path=self.dbp)
+        rs = store.run_stats(db_path=self.dbp)
+        self.assertEqual(rs["total_runs"], 1)
+        self.assertIsNotNone(rs["last_run"])
+        runs = store.recent_runs(db_path=self.dbp)
+        self.assertEqual(runs[0]["per_source"]["github"]["fetched"], 16)
+
+    def test_daily_new_counts(self):
+        store.record_run("2026-05-24T01:00:00Z", "2026-05-24T01:00:01Z", 1000,
+                         fetched=5, inserted=5, updated=0, per_source={},
+                         db_path=self.dbp)
+        # 远期记录不计入近 1 天窗口（用大 days 容纳测试日期）
+        rows = store.daily_new_counts(days=36500, db_path=self.dbp)
+        self.assertTrue(any(r["new_items"] == 5 for r in rows))
+
+
+class TestBriefBalance(unittest.TestCase):
+    def test_balanced_top_mixes_sources(self):
+        from src import brief
+        rows = (
+            [{"source": "github", "title": f"g{i}", "score": 100000 - i, "url": ""} for i in range(5)]
+            + [{"source": "hackernews", "title": f"h{i}", "score": 500 - i, "url": ""} for i in range(5)]
+            + [{"source": "rss", "title": f"r{i}", "score": 0, "url": ""} for i in range(5)]
+        )
+        top = brief._balanced_top(rows, per_source=2)
+        srcs = {r["source"] for r in top}
+        self.assertEqual(srcs, {"github", "hackernews", "rss"})
+        self.assertEqual(len(top), 6)  # 每源 2 条
+
+
 class TestGitHubParser(unittest.TestCase):
     def test_parse_trending_html(self):
         items = sources._parse_trending_html(GITHUB_FIXTURE, top_n=10)

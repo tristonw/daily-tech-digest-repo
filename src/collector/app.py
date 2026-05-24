@@ -10,52 +10,55 @@ from . import sources
 
 
 def collect_once(verbose: bool = True) -> dict:
-    """抓取所有启用的源，upsert 入库，并写当日 JSONL 快照。"""
+    """抓取所有启用的源，upsert 入库，写 JSONL 快照，并记录运维指标。"""
     cfg = config.load_config()["collector"]
     timeout = cfg.get("http_timeout", 15)
     collected: list[dict] = []
+    per_source: dict[str, dict] = {}
+    started = datetime.now(timezone.utc)
+
+    def _run_source(key: str, label: str, fn):
+        try:
+            items = fn()
+            collected.extend(items)
+            per_source[key] = {"fetched": len(items), "status": "ok"}
+            if verbose:
+                print(f"  {label}: {len(items)} 条")
+        except Exception as exc:  # noqa: BLE001
+            per_source[key] = {"fetched": 0, "status": "error", "error": str(exc)}
+            print(f"  [warn] {label} 采集失败: {exc}")
 
     if cfg.get("hacker_news", {}).get("enabled"):
         hn_cfg = cfg["hacker_news"]
-        try:
-            hn = sources.fetch_hacker_news(
-                hn_cfg.get("top_n", 30), hn_cfg.get("min_score", 0), timeout)
-            collected += hn
-            if verbose:
-                print(f"  HackerNews: {len(hn)} 条")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [warn] HackerNews 采集失败: {exc}")
-
+        _run_source("hackernews", "HackerNews", lambda: sources.fetch_hacker_news(
+            hn_cfg.get("top_n", 30), hn_cfg.get("min_score", 0), timeout))
     if cfg.get("github_trending", {}).get("enabled"):
         gh_cfg = cfg["github_trending"]
-        try:
-            gh = sources.fetch_github_trending(
-                gh_cfg.get("since", "daily"), gh_cfg.get("top_n", 25), timeout)
-            collected += gh
-            if verbose:
-                print(f"  GitHub Trending: {len(gh)} 条")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [warn] GitHub Trending 采集失败: {exc}")
-
+        _run_source("github", "GitHub Trending", lambda: sources.fetch_github_trending(
+            gh_cfg.get("since", "daily"), gh_cfg.get("top_n", 25), timeout))
     if cfg.get("rss", {}).get("enabled"):
         rss_cfg = cfg["rss"]
-        try:
-            rss = sources.fetch_rss(
-                rss_cfg.get("feeds", []), rss_cfg.get("per_feed_limit", 15), timeout)
-            collected += rss
-            if verbose:
-                print(f"  RSS: {len(rss)} 条")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [warn] RSS 采集失败: {exc}")
+        _run_source("rss", "RSS", lambda: sources.fetch_rss(
+            rss_cfg.get("feeds", []), rss_cfg.get("per_feed_limit", 15), timeout))
 
     result = store.upsert_many(collected)
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = started.strftime("%Y-%m-%d")
     if collected:
         store.write_jsonl_snapshot(collected, date_str)
     result["fetched"] = len(collected)
+
+    finished = datetime.now(timezone.utc)
+    status = "ok" if all(s.get("status") == "ok" for s in per_source.values()) else "partial"
+    store.record_run(
+        started_utc=started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        finished_utc=finished.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        duration_ms=int((finished - started).total_seconds() * 1000),
+        fetched=result["fetched"], inserted=result["inserted"],
+        updated=result["updated"], per_source=per_source, status=status,
+    )
     if verbose:
         print(f"  => 抓取 {result['fetched']} 条，新增 {result['inserted']}，"
-              f"更新 {result['updated']}")
+              f"更新 {result['updated']}（耗时 {(finished-started).total_seconds():.1f}s）")
     return result
 
 

@@ -4,7 +4,9 @@
   python run.py collect [--once | --watch] [--interval 1800]
   python run.py analyze [--window-hours 24] [--date YYYY-MM-DD]
   python run.py podcast [--with-audio] [--insecure-ssl] [--date YYYY-MM-DD]
-  python run.py daily   [--with-audio]      # collect --once -> analyze -> podcast
+  python run.py daily   [--with-audio]      # collect -> 看板 -> 早报 -> analyze -> podcast
+  python run.py dashboard                   # 刷新运维看板 DASHBOARD.md 并打印
+  python run.py brief   [--date YYYY-MM-DD] # 生成每日早间简报
   python run.py stats
 """
 from __future__ import annotations
@@ -20,11 +22,13 @@ def _today() -> str:
 
 def cmd_collect(args) -> None:
     from src.collector import app
+    from src import dashboard
     if args.watch:
         app.watch(args.interval)
     else:
         print("== 模块1：新闻采集（单次）==")
         app.collect_once()
+        dashboard.render_markdown()  # 每次采集后刷新看板
 
 
 def cmd_analyze(args) -> None:
@@ -48,9 +52,14 @@ def cmd_daily(args) -> None:
     from src.collector import app as collector
     from src.analyzer import app as analyzer
     from src.podcast import script, tts
+    from src import dashboard, brief
     date = _today()
     print("== 模块1：新闻采集 ==")
     collector.collect_once()
+    print("== 看板刷新 ==")
+    dashboard.render_markdown()
+    print("== 每日早报 ==")
+    print(f"  {brief.generate(date)}")
     print("== 模块2：汇总分析 ==")
     analyzer.analyze(date)
     print("== 模块3：播客脚本 ==")
@@ -61,6 +70,18 @@ def cmd_daily(args) -> None:
             tts.synthesize(date, insecure_ssl=args.insecure_ssl)
         except Exception as exc:  # noqa: BLE001
             print(f"  [warn] {exc}")
+
+
+def cmd_dashboard(_args) -> None:
+    from src import dashboard
+    dashboard.render_cli()
+    out = dashboard.render_markdown()
+    print(f"看板已写入: {out}")
+
+
+def cmd_brief(args) -> None:
+    from src import brief
+    print(f"早报已生成: {brief.generate(args.date)}")
 
 
 def cmd_stats(_args) -> None:
@@ -103,6 +124,13 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("stats", help="查看数据仓库统计")
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("dashboard", help="运维看板：刷新 DASHBOARD.md 并打印")
+    p.set_defaults(func=cmd_dashboard)
+
+    p = sub.add_parser("brief", help="生成每日早间简报")
+    p.add_argument("--date", default=None)
+    p.set_defaults(func=cmd_brief)
 
     args = parser.parse_args(argv)
     args.func(args)
