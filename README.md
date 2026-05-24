@@ -41,9 +41,23 @@ python run.py dashboard
 # 每日早间简报（运维状态 + 今日要点）
 python run.py brief
 
+# 合成音频并构建 GitHub Pages 在线播放页
+python run.py publish              # 合成音频 + 构建 site/
+python run.py publish --skip-audio # 仅构建站点
+
 # 数据仓库统计
 python run.py stats
 ```
+
+## 在线收听（GitHub Pages）
+
+`pages.yml` 工作流每天（01:00 UTC）在 GitHub Actions 里合成音频、构建播放页并发布到 GitHub Pages，得到一个公开可访问的在线播放页：
+
+```
+https://<用户名>.github.io/daily-tech-digest-repo/
+```
+
+手机/电脑浏览器打开即可在线收听，无需下载。首次需要在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**（工作流也会尝试自动开启）。本地预览：`python run.py publish` 后打开 `site/index.html`。
 
 ## 运维可见性
 
