@@ -9,7 +9,9 @@ import html
 import re
 import shutil
 from datetime import datetime, timezone
+from email.utils import format_datetime
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from . import brief, config
 from .podcast import tts
@@ -37,6 +39,20 @@ def _episodes() -> list[dict]:
 
 def _has_audio(p: Path) -> bool:
     return p.exists() and p.stat().st_size > 0
+
+
+def _duration_hhmmss(date: str) -> str:
+    """按脚本字数估算时长（中文约 chars_per_minute 字/分钟）。"""
+    pcfg = config.load_config()["podcast"]
+    cpm = pcfg.get("chars_per_minute", 280)
+    script = config.PODCASTS_DIR / f"{date}-script.md"
+    chars = 0
+    if script.exists():
+        for line in script.read_text(encoding="utf-8").splitlines():
+            if line.startswith(("主持人A：", "嘉宾B：")):
+                chars += len(line.split("：", 1)[1])
+    secs = int(chars * 60 / cpm) if chars else 0
+    return f"{secs // 3600:02d}:{secs % 3600 // 60:02d}:{secs % 60:02d}"
 
 
 def synth_all(insecure_ssl: bool = False) -> dict:
@@ -82,6 +98,8 @@ _HEAD = """<!DOCTYPE html>
 <header>
   <h1>🎙 每日科技播客</h1>
   <p>每天自动汇总科技动态，生成双人对话播客</p>
+  <p><a href="feed.xml">📡 RSS 订阅</a>（可提交小宇宙 / Apple Podcasts 收录）</p>
+  <p style="font-size:.78rem;color:#666">本节目文稿与配音均由 AI 自动生成</p>
 </header>
 <main>
 """
@@ -119,4 +137,65 @@ def build_site(out_dir: Path | None = None) -> Path:
     out_file = out / "index.html"
     out_file.write_text(_HEAD + body + "\n" + _FOOT.format(updated=updated),
                         encoding="utf-8")
+    build_feed(out)
+    return out_file
+
+
+def build_feed(out_dir: Path | None = None) -> Path:
+    """生成播客 RSS feed（feed.xml），用于提交小宇宙/Apple Podcasts 等平台收录。"""
+    out = out_dir or (config.ROOT / "site")
+    out.mkdir(parents=True, exist_ok=True)
+    p = config.load_config().get("publish", {})
+    base = p.get("site_base_url", "").rstrip("/")
+    feed_url = f"{base}/feed.xml"
+
+    items_xml = []
+    for ep in _episodes():
+        date = ep["date"]
+        audio_url = f"{base}/audio/{date}.mp3"
+        size = ep["mp3"].stat().st_size if _has_audio(ep["mp3"]) else 0
+        pub = format_datetime(datetime(int(date[:4]), int(date[5:7]),
+                                       int(date[8:10]), 12, tzinfo=timezone.utc))
+        title = f"{p.get('title','每日科技播客')} · {date}"
+        desc = ep["teaser"] or "每日科技动态汇总"
+        items_xml.append(f"""    <item>
+      <title>{xml_escape(title)}</title>
+      <description>{xml_escape(desc)}</description>
+      <itunes:summary>{xml_escape(desc)}</itunes:summary>
+      <enclosure url="{xml_escape(audio_url)}" length="{size}" type="audio/mpeg"/>
+      <guid isPermaLink="false">{xml_escape(audio_url)}</guid>
+      <pubDate>{pub}</pubDate>
+      <itunes:duration>{_duration_hhmmss(date)}</itunes:duration>
+      <itunes:explicit>{'yes' if p.get('explicit') else 'no'}</itunes:explicit>
+    </item>""")
+
+    image_tag = (f'<itunes:image href="{xml_escape(p["image"])}"/>'
+                 if p.get("image") else "")
+    channel_image = (f'<image><url>{xml_escape(p["image"])}</url>'
+                     f'<title>{xml_escape(p.get("title",""))}</title>'
+                     f'<link>{xml_escape(base)}</link></image>'
+                     if p.get("image") else "")
+    feed = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>{xml_escape(p.get('title','每日科技播客'))}</title>
+    <link>{xml_escape(base)}</link>
+    <language>{xml_escape(p.get('language','zh-cn'))}</language>
+    <description>{xml_escape(p.get('description',''))}</description>
+    <itunes:author>{xml_escape(p.get('author',''))}</itunes:author>
+    <itunes:summary>{xml_escape(p.get('description',''))}</itunes:summary>
+    <itunes:owner><itunes:name>{xml_escape(p.get('author',''))}</itunes:name>
+      <itunes:email>{xml_escape(p.get('email',''))}</itunes:email></itunes:owner>
+    <itunes:category text="{xml_escape(p.get('category','Technology'))}"/>
+    <itunes:explicit>{'yes' if p.get('explicit') else 'no'}</itunes:explicit>
+    {image_tag}
+    {channel_image}
+    <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="{xml_escape(feed_url)}" rel="self" type="application/rss+xml"/>
+{chr(10).join(items_xml)}
+  </channel>
+</rss>
+"""
+    out_file = out / "feed.xml"
+    out_file.write_text(feed, encoding="utf-8")
     return out_file
