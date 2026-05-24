@@ -27,7 +27,7 @@ _LINE_RE = re.compile(r"^\s*(?:主持人|嘉宾|主播|host|guest)?\s*([AB])\s*[
 
 
 def _parse_script(text: str, hosts: dict) -> list[tuple[str, str]]:
-    """返回 [(voice, text), ...]。同时支持以角色中文名开头的行。"""
+    """返回 [(host_key, text), ...]，host_key 为 'A'/'B'；具体音色由各 provider 解析。"""
     name_to_key = {hosts["A"]["name"]: "A", hosts["B"]["name"]: "B"}
     segments: list[tuple[str, str]] = []
     for raw in text.splitlines():
@@ -49,7 +49,7 @@ def _parse_script(text: str, hosts: dict) -> list[tuple[str, str]]:
                 if key:
                     break
         if key and speech and speech.strip():
-            segments.append((hosts[key]["voice"], speech.strip()))
+            segments.append((key.upper(), speech.strip()))
     return segments
 
 
@@ -81,13 +81,14 @@ def _patch_edge_tts_ssl(insecure: bool) -> None:
 
 
 async def _synth_edge(segments: list[tuple[str, str]], out_path: Path,
-                      insecure_ssl: bool) -> None:
+                      hosts: dict, insecure_ssl: bool) -> None:
     import asyncio as _aio
 
     import edge_tts
     _patch_edge_tts_ssl(insecure_ssl)
     with open(out_path, "wb") as fout:
-        for i, (voice, speech) in enumerate(segments, 1):
+        for i, (key, speech) in enumerate(segments, 1):
+            voice = hosts[key]["voice"]
             # 免费端点偶发 503 限流，逐段重试，避免整集失败。
             for attempt in range(4):
                 try:
@@ -106,7 +107,8 @@ async def _synth_edge(segments: list[tuple[str, str]], out_path: Path,
                 print(f"    …已合成 {i}/{len(segments)} 段")
 
 
-def _synth_azure(segments: list[tuple[str, str]], out_path: Path) -> None:
+def _synth_azure(segments: list[tuple[str, str]], out_path: Path,
+                 hosts: dict) -> None:
     """Azure 语音服务 REST 合成（付费订阅含商用授权）。"""
     key = os.environ.get("AZURE_SPEECH_KEY")
     if not key:
@@ -116,7 +118,8 @@ def _synth_azure(segments: list[tuple[str, str]], out_path: Path) -> None:
     fmt = azure.get("output_format", "audio-24khz-48kbitrate-mono-mp3")
     endpoint = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
     with open(out_path, "wb") as fout:
-        for i, (voice, speech) in enumerate(segments, 1):
+        for i, (hkey, speech) in enumerate(segments, 1):
+            voice = hosts[hkey]["voice"]
             ssml = (
                 "<speak version='1.0' xml:lang='zh-CN'>"
                 f"<voice name='{voice}'>{_xml_escape(speech)}</voice></speak>"
@@ -140,6 +143,73 @@ def _xml_escape(s: str) -> str:
             .replace('"', "&quot;"))
 
 
+def _download(url: str, dest: Path) -> None:
+    import ssl
+    import urllib.request
+    ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE") \
+        or "/etc/ssl/certs/ca-certificates.crt"
+    ctx = ssl.create_default_context(cafile=ca) if os.path.exists(ca) \
+        else ssl.create_default_context()
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=120, context=ctx) as r, open(dest, "wb") as f:
+        f.write(r.read())
+
+
+def _ensure_piper_model(vid: str, model_dir: Path) -> Path:
+    """确保 Piper 语音模型（onnx+json）存在，缺失则从 HuggingFace 下载。"""
+    model_dir.mkdir(parents=True, exist_ok=True)
+    onnx = model_dir / f"{vid}.onnx"
+    js = model_dir / f"{vid}.onnx.json"
+    if onnx.exists() and onnx.stat().st_size > 100000 and js.exists():
+        return onnx
+    parts = vid.split("-")  # 例: zh_CN-chaowen-medium
+    lang, speaker, quality = parts[0], parts[1], parts[2]
+    fam = lang.split("_")[0]
+    base = ("https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+            f"{fam}/{lang}/{speaker}/{quality}/{vid}")
+    print(f"    下载 Piper 模型 {vid} …")
+    _download(base + ".onnx", onnx)
+    _download(base + ".onnx.json", js)
+    return onnx
+
+
+def _synth_piper(segments: list[tuple[str, str]], out_path: Path) -> None:
+    """自托管 Piper（开源 MIT，输出音频可商用）+ lameenc 编码 MP3。"""
+    from piper import PiperVoice
+    import lameenc
+
+    tcfg = config.load_config()["podcast"]["tts"].get("piper", {})
+    voice_map = tcfg.get("voices", {"A": "zh_CN-chaowen-medium",
+                                    "B": "zh_CN-huayan-medium"})
+    model_dir = config.ROOT / tcfg.get("model_dir", "data/piper_models")
+    bitrate = tcfg.get("bitrate", 64)
+
+    loaded: dict[str, object] = {}
+
+    def voice_for(key: str):
+        vid = voice_map[key]
+        if vid not in loaded:
+            onnx = _ensure_piper_model(vid, model_dir)
+            loaded[vid] = PiperVoice.load(str(onnx), str(onnx) + ".json")
+        return loaded[vid]
+
+    pcm = bytearray()
+    sample_rate = 22050
+    for i, (key, speech) in enumerate(segments, 1):
+        for chunk in voice_for(key).synthesize(speech):
+            pcm += chunk.audio_int16_bytes
+            sample_rate = chunk.sample_rate
+        if i % 10 == 0:
+            print(f"    …已合成 {i}/{len(segments)} 段")
+
+    enc = lameenc.Encoder()
+    enc.set_bit_rate(bitrate)
+    enc.set_in_sample_rate(sample_rate)
+    enc.set_channels(1)
+    enc.set_quality(3)
+    out_path.write_bytes(enc.encode(bytes(pcm)) + enc.flush())
+
+
 def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
     pcfg = config.load_config()["podcast"]
     hosts = pcfg["hosts"]
@@ -156,19 +226,21 @@ def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
     # 合规：在开头插入"AI 生成"口播声明（用主持人A音色）。
     disclaimer = tts_cfg.get("ai_disclaimer")
     if disclaimer:
-        segments.insert(0, (hosts["A"]["voice"], disclaimer))
+        segments.insert(0, ("A", disclaimer))
 
     print(f"  provider={provider}，共 {len(segments)} 段，开始合成…")
     if provider == "edge":
         print("  ⚠ edge-tts 语音未授权用于对外发布/商业播客；"
-              "公开发布前请将 config.podcast.tts.provider 改为 azure 等有商用授权的 provider。")
+              "公开发布请用 provider=piper（自托管开源，可商用）或 azure（付费含商用授权）。")
 
     out_path = config.PODCASTS_DIR / f"{date_str}.mp3"
     try:
-        if provider == "azure":
-            _synth_azure(segments, out_path)
+        if provider == "piper":
+            _synth_piper(segments, out_path)
+        elif provider == "azure":
+            _synth_azure(segments, out_path, hosts)
         elif provider == "edge":
-            asyncio.run(_synth_edge(segments, out_path, insecure_ssl))
+            asyncio.run(_synth_edge(segments, out_path, hosts, insecure_ssl))
         else:
             raise ValueError(f"未知的 TTS provider: {provider}")
     except (RuntimeError, ValueError):

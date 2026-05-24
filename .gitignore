@@ -10,5 +10,11 @@ data/digest.db
 # GitHub Pages 站点在 CI 构建并部署，不入库。
 site/
 
+# Piper 语音模型较大，运行时从 HuggingFace 下载，不入库。
+data/piper_models/
+
+# g2pw 中文注音模型缓存（运行时下载），不入库。
+g2pW/
+
 # 音频体积较大，默认不入库；如需保留可移除下一行。
 podcasts/*.mp3
