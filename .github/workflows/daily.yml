@@ -44,18 +44,7 @@ jobs:
 
       - name: Generate podcast script
         run: python run.py podcast
-
-      - name: Synthesize audio
-        run: python run.py podcast --audio-only || echo "音频合成失败（端点不可达），保留脚本"
-
-      - name: Upload podcast audio (artifact)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: podcast-audio
-          path: podcasts/*.mp3
-          if-no-files-found: ignore
-          retention-days: 90
+        # 音频合成与发布由 pages.yml 负责（self-hosted Piper + GitHub Pages），此处只产文稿。
 
       - name: Commit report and script
         run: |

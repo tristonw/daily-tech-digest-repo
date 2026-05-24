@@ -29,8 +29,19 @@ jobs:
         with:
           python-version: "3.11"
 
+      # 缓存 Piper 语音模型（约 120MB），避免每次重新下载
+      - name: Cache Piper models
+        uses: actions/cache@v4
+        with:
+          path: data/piper_models
+          key: piper-models-zh-v1
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          # 自托管 Piper TTS（开源、可商用）。如改用 edge/azure 可删此段。
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-piper.txt
 
       - name: Synthesize audio and build site
         run: python run.py publish

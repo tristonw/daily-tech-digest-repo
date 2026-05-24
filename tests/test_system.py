@@ -247,11 +247,11 @@ class TestPodcastParser(unittest.TestCase):
         )
         segs = tts._parse_script(text, self.HOSTS)
         self.assertEqual(len(segs), 5)
-        self.assertEqual(segs[0], ("voiceA", "第一句。"))
-        self.assertEqual(segs[1], ("voiceB", "第二句。"))
-        self.assertEqual(segs[2][0], "voiceA")
-        self.assertEqual(segs[3][0], "voiceA")  # 晓宇 -> A
-        self.assertEqual(segs[4][0], "voiceB")  # 思琪 -> B
+        self.assertEqual(segs[0], ("A", "第一句。"))
+        self.assertEqual(segs[1], ("B", "第二句。"))
+        self.assertEqual(segs[2][0], "A")
+        self.assertEqual(segs[3][0], "A")  # 晓宇 -> A
+        self.assertEqual(segs[4][0], "B")  # 思琪 -> B
 
     def test_empty_lines_ignored(self):
         segs = tts._parse_script("\n\n主持人A：内容\n\n", self.HOSTS)

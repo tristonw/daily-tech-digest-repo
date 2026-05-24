@@ -1,4 +1,6 @@
-# 采集/分析/存储全部使用 Python 标准库；以下仅用于音频合成与封面生成。
+# 采集/分析/存储全部使用 Python 标准库。
+# 封面生成需要 Pillow；edge 备用 provider 需要 edge-tts。
+# 默认 provider=piper（自托管开源、可商用），其依赖见 requirements-piper.txt。
 edge-tts>=6.1.0
 Pillow>=10.0.0
 

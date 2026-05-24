@@ -49,6 +49,29 @@ python run.py publish --skip-audio # 仅构建站点
 python run.py stats
 ```
 
+## 完整 RSS 分发方案（小宇宙 / Apple Podcasts / Spotify）
+
+播客平台不"上传文件"，而是**收录 RSS feed**：你的 MP3 托管在公开 URL（本项目用 GitHub Pages），写进 feed 的 `<enclosure>`，平台从 feed 自动拉取。一次配置，全网分发。
+
+端到端链路（全自动）：
+```
+collect → analyze → podcast(脚本) → publish(piper 合成 MP3 + 封面 + feed.xml) → 部署 GitHub Pages
+```
+
+产出的 feed 地址：
+```
+https://<用户名>.github.io/daily-tech-digest-repo/feed.xml
+```
+
+`feed.xml` 已包含平台收录所需字段：频道标题/作者/邮箱/分类/语言、`itunes:image`（封面）、`itunes:explicit`，每期 `<item>` 含 `<enclosure>`（MP3 URL + 字节大小）、`guid`、`pubDate`、`itunes:duration`、`atom:link self`。
+
+**一次性提交步骤：**
+1. 在 `config.json → publish` 填真实 `email`（平台验证归属用）；`site_base_url` 设为你的 Pages 地址。
+2. 触发 `Publish Podcast Site` 工作流（或本地 `python run.py publish`）生成并部署 feed。
+3. 浏览器打开 `…/feed.xml` 确认可访问。
+4. 在小宇宙 App / 创作者后台「提交播客」填入 feed 地址；同一地址可同时提交 Apple Podcasts、Spotify 等。
+5. 之后每日工作流更新 feed，新节目被各平台自动收录。
+
 ## 在线收听（GitHub Pages）
 
 `pages.yml` 工作流每天（01:00 UTC）在 GitHub Actions 里合成音频、构建播放页并发布到 GitHub Pages，得到一个公开可访问的在线播放页：
@@ -112,8 +135,17 @@ podcasts/              # 双人对话脚本 + MP3
 - **内容过滤**：`config.json → content_filter` 按关键词剔除时政/敏感条目（仅作用于 digest / 早报 / 播客等对外产物，原始采集数据完整保留）。可按需增删 `block_keywords`。
 - **AI 生成标识**：RSS feed、播放页均标注"由 AI 生成"；音频开头自动插入一段 AI 声明（`config.podcast.tts.ai_disclaimer`）。符合《互联网信息服务深度合成管理规定》对合成内容标识的要求。
 - **TTS provider 可切换**（`config.podcast.tts.provider`）：
-  - `edge`（默认，免费）：⚠ **仅授权用于微软 Edge"大声朗读"，未授权用于对外发布/商业播客**。
-  - `azure`：Azure 语音服务 REST（付费订阅含商用授权），密钥用环境变量 `AZURE_SPEECH_KEY`，区域在 `config.podcast.tts.azure.region`。**对外发布请改用此项或其它有商用授权的 TTS。**
+  - `piper`（**默认，推荐**）：自托管开源 TTS（MIT 许可），**输出音频可商用、零授权风险，完全免费**。中文双音色 = `zh_CN-chaowen-medium`（男）+ `zh_CN-huayan-medium`（女），模型首次运行自动从 HuggingFace 下载。依赖见 `requirements-piper.txt`（含 PyTorch CPU 版 + lameenc 编码 MP3，无需 ffmpeg）。
+  - `azure`：Azure 语音服务 REST（付费订阅含商用授权，免费层每月约 50 万字符），密钥用环境变量 `AZURE_SPEECH_KEY`，区域在 `config.podcast.tts.azure.region`。
+  - `edge`（备用）：edge-tts 免费，⚠ **仅授权用于微软 Edge"大声朗读"，未授权用于对外发布/商业播客**——仅供本地试听。
+
+### 自托管 TTS（provider=piper）安装
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-piper.txt
+python run.py podcast --audio-only --date YYYY-MM-DD   # 生成 MP3
+```
 - **版权**：仅做摘要、评论与链接回源，不复制原文；公开发布前请确认来源条款并咨询专业意见。
 
 ## 说明
