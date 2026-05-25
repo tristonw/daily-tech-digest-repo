@@ -43,7 +43,7 @@ def collect_once(verbose: bool = True) -> dict:
 
     started_iso = started.strftime("%Y-%m-%dT%H:%M:%SZ")
     result = store.upsert_many(collected)
-    date_str = started.strftime("%Y-%m-%d")
+    date_str = config.today_str()  # 快照按本地(北京)日期分组
     if collected:
         store.write_jsonl_snapshot(collected, date_str, collected_utc=started_iso)
     result["fetched"] = len(collected)

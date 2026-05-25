@@ -93,7 +93,7 @@ def analyze(date_str: str | None = None, window_hours: int | None = None,
     cfg = config.load_config()["analyzer"]
     window_hours = window_hours or cfg.get("window_hours", 24)
     max_per_source = cfg.get("max_items_per_source", 15)
-    date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = date_str or config.today_str()
 
     config.ensure_dirs()
     out_path = config.REPORTS_DIR / f"{date_str}.md"

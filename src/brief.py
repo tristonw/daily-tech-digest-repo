@@ -77,7 +77,7 @@ def _podcast_teaser(date_str: str, items: list[dict]) -> str:
 
 
 def generate(date_str: str | None = None, window_hours: int = 24) -> Path:
-    date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = date_str or config.today_str()
     since = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
     rows = filters.filter_items(

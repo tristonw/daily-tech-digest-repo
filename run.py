@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    from src import config
+    return config.today_str()
 
 
 def cmd_collect(args) -> None:

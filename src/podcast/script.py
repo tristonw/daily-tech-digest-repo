@@ -31,7 +31,7 @@ _PLACEHOLDER_MARK = "（待生成）"
 
 def generate(date_str: str | None = None, force: bool = False) -> Path:
     pcfg = config.load_config()["podcast"]
-    date_str = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = date_str or config.today_str()
     target_minutes = pcfg.get("target_minutes", 15)
     hosts = pcfg["hosts"]
 
