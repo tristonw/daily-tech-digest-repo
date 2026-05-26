@@ -39,7 +39,7 @@
       "B": {"name": "思琪", "role": "嘉宾", "voice": "zh-CN-XiaoxiaoNeural"}
     },
     "tts": {
-      "provider": "kokoro",
+      "provider": "edge",
       "ai_disclaimer": "本期节目的文稿与配音均由人工智能自动生成，内容仅供参考。",
       "kokoro": {
         "lang_code": "z",
