@@ -1,0 +1,10 @@
+# 自托管 TTS（provider=kokoro，默认）所需依赖——开源 Apache-2.0，输出音频可商用。
+# 比 Piper 更自然、且能正常处理中英混读。模型首次运行从 HuggingFace 自动下载缓存。
+# 安装前建议先装 CPU 版 PyTorch（体积更小）：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# 然后：
+#   pip install -r requirements-kokoro.txt
+kokoro>=0.8
+misaki[zh]>=0.8
+soundfile>=0.12
+lameenc>=1.7.0

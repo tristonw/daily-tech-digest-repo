@@ -210,6 +210,39 @@ def _synth_piper(segments: list[tuple[str, str]], out_path: Path) -> None:
     out_path.write_bytes(enc.encode(bytes(pcm)) + enc.flush())
 
 
+def _synth_kokoro(segments: list[tuple[str, str]], out_path: Path) -> None:
+    """自托管 Kokoro（开源 Apache-2.0，可商用）+ lameenc 编码 MP3。
+
+    比 Piper 更自然、且能正常处理中英混读。模型首次运行从 HuggingFace 下载并缓存。
+    """
+    import lameenc
+    import numpy as np
+    from kokoro import KPipeline
+
+    tcfg = config.load_config()["podcast"]["tts"].get("kokoro", {})
+    lang = tcfg.get("lang_code", "z")  # 'z' = 中文（普通话）
+    voices = tcfg.get("voices", {"A": "zm_yunxi", "B": "zf_xiaoxiao"})
+    bitrate = tcfg.get("bitrate", 64)
+    sr = tcfg.get("sample_rate", 24000)
+
+    pipeline = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M")
+    pcm = bytearray()
+    for i, (key, speech) in enumerate(segments, 1):
+        voice = voices.get(key, voices.get("B", "zf_xiaoxiao"))
+        for _gs, _ps, audio in pipeline(speech, voice=voice):
+            a = np.asarray(audio, dtype=np.float32)
+            pcm += (np.clip(a, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        if i % 10 == 0:
+            print(f"    …已合成 {i}/{len(segments)} 段")
+
+    enc = lameenc.Encoder()
+    enc.set_bit_rate(bitrate)
+    enc.set_in_sample_rate(sr)
+    enc.set_channels(1)
+    enc.set_quality(2)
+    out_path.write_bytes(enc.encode(bytes(pcm)) + enc.flush())
+
+
 def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
     pcfg = config.load_config()["podcast"]
     hosts = pcfg["hosts"]
@@ -235,7 +268,9 @@ def synthesize(date_str: str, insecure_ssl: bool = False) -> Path:
 
     out_path = config.PODCASTS_DIR / f"{date_str}.mp3"
     try:
-        if provider == "piper":
+        if provider == "kokoro":
+            _synth_kokoro(segments, out_path)
+        elif provider == "piper":
             _synth_piper(segments, out_path)
         elif provider == "azure":
             _synth_azure(segments, out_path, hosts)

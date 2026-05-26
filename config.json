@@ -39,8 +39,14 @@
       "B": {"name": "思琪", "role": "嘉宾", "voice": "zh-CN-XiaoxiaoNeural"}
     },
     "tts": {
-      "provider": "piper",
+      "provider": "kokoro",
       "ai_disclaimer": "本期节目的文稿与配音均由人工智能自动生成，内容仅供参考。",
+      "kokoro": {
+        "lang_code": "z",
+        "voices": {"A": "zm_yunxi", "B": "zf_xiaoxiao"},
+        "bitrate": 64,
+        "sample_rate": 24000
+      },
       "piper": {
         "voices": {"A": "zh_CN-chaowen-medium", "B": "zh_CN-huayan-medium"},
         "model_dir": "data/piper_models",
